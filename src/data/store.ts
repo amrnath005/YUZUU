@@ -553,6 +553,7 @@ class YuzuStore {
       if (data.amount !== undefined) updatePayload.amount = Number(data.amount);
       if (data.date !== undefined) updatePayload.date = data.date;
       if (data.status !== undefined) updatePayload.status = data.status;
+      if (data.clientId !== undefined) updatePayload.client_id = data.clientId;
       if (data.notes !== undefined) updatePayload.notes = data.notes;
 
       const { error } = await this.cloudClient
@@ -570,6 +571,24 @@ class YuzuStore {
     this.data.deliverables = this.data.deliverables.map(d => 
       d.id === id ? { ...d, ...data } : d
     );
+    this.notify();
+  }
+
+  async deleteDeliverable(id: string): Promise<void> {
+    if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
+      const { error } = await this.cloudClient
+        .from('deliverables')
+        .delete()
+        .eq('id', id)
+        .eq('workspace_id', this.activeWorkspaceId);
+
+      if (error) {
+        console.error('[YUZU Supabase] Error deleting deliverable:', error);
+        throw new Error(error.message || 'Failed to delete deliverable in cloud');
+      }
+    }
+
+    this.data.deliverables = this.data.deliverables.filter(d => d.id !== id);
     this.notify();
   }
 

@@ -2,11 +2,13 @@
 
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown, Pencil } from "lucide-react";
 import { Deliverable, DELIVERABLE_TYPE_LABELS } from "@/types";
 import { formatCurrency, formatFullDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useClients } from "@/hooks/useStore";
+import { EditDeliverableDialog } from "./edit-deliverable-dialog";
 
 interface WorkTableProps {
   deliverables: Deliverable[];
@@ -20,6 +22,7 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
   const clients = useClients();
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [editingDeliverable, setEditingDeliverable] = useState<Deliverable | null>(null);
 
   const clientMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -104,7 +107,8 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
               <motion.div 
                 key={d.id} 
                 variants={item} 
-                className="p-3.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs space-y-2 hover:border-[var(--color-border)] transition-colors"
+                onClick={() => setEditingDeliverable(d)}
+                className="p-3.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs space-y-2 hover:border-[var(--color-yuzu)] transition-colors cursor-pointer"
               >
                 <div className="flex justify-between items-start gap-2">
                   <div className="min-w-0 flex-1">
@@ -115,15 +119,27 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
                       </p>
                     )}
                   </div>
-                  <Badge variant={getStatusVariant(d.status)}>
-                    {d.status.charAt(0).toUpperCase() + d.status.slice(1).replace("-", " ")}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={getStatusVariant(d.status)}>
+                      {d.status.charAt(0).toUpperCase() + d.status.slice(1).replace("-", " ")}
+                    </Badge>
+                  </div>
                 </div>
                 <div className="flex justify-between items-center text-xs pt-1 border-t border-[var(--color-border)]/50">
                   <span className="text-[var(--color-text-secondary)]">{formatFullDate(d.date)}</span>
                   <div className="flex items-center gap-2">
                     <Badge variant="default" className="text-[11px] font-normal">{DELIVERABLE_TYPE_LABELS[d.type] || d.type}</Badge>
                     <span className="font-bold text-sm text-[var(--color-text-primary)]">{formatCurrency(d.amount)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingDeliverable(d);
+                      }}
+                      icon={<Pencil className="w-3 h-3" />}
+                    />
                   </div>
                 </div>
               </motion.div>
@@ -157,11 +173,19 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
               <th className="py-3 px-4 font-semibold text-center cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none w-32" onClick={() => handleSort("status")}>
                 Status {renderSortIcon("status")}
               </th>
+              <th className="py-3 px-4 text-right w-20">
+                Action
+              </th>
             </tr>
           </thead>
           <motion.tbody variants={container} initial="hidden" animate="show" className="divide-y divide-[var(--color-border)]">
             {sortedDeliverables.map((d) => (
-              <motion.tr key={d.id} variants={item} className="hover:bg-[var(--color-surface-muted)]/50 transition-colors">
+              <motion.tr 
+                key={d.id} 
+                variants={item} 
+                onClick={() => setEditingDeliverable(d)}
+                className="group hover:bg-[var(--color-surface-muted)]/70 transition-colors cursor-pointer"
+              >
                 <td className="py-3 px-4 whitespace-nowrap text-xs text-[var(--color-text-secondary)]">
                   {formatFullDate(d.date).split(',')[0]}
                 </td>
@@ -171,14 +195,21 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
                   </td>
                 )}
                 <td className="py-3 px-4 font-medium text-[var(--color-text-primary)] text-sm">
-                  {d.title}
+                  <div className="flex items-center gap-1.5">
+                    <span>{d.title}</span>
+                  </div>
+                  {d.notes && (
+                    <p className="text-[11px] text-[var(--color-text-secondary)] truncate max-w-xs mt-0.5 font-normal">
+                      {d.notes}
+                    </p>
+                  )}
                 </td>
                 <td className="py-3 px-4">
                   <Badge variant="default" className="font-normal text-[11px]">
                     {DELIVERABLE_TYPE_LABELS[d.type] || d.type}
                   </Badge>
                 </td>
-                <td className="py-3 px-4 font-bold text-right text-[var(--color-text-primary)] text-sm">
+                <td className="py-3 px-4 font-bold text-right text-[var(--color-text-primary)] text-sm tabular-nums">
                   {formatCurrency(d.amount)}
                 </td>
                 <td className="py-3 px-4 text-center">
@@ -186,11 +217,32 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
                     {d.status.charAt(0).toUpperCase() + d.status.slice(1).replace("-", " ")}
                   </Badge>
                 </td>
+                <td className="py-3 px-4 text-right whitespace-nowrap">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] opacity-70 group-hover:opacity-100 hover:bg-[var(--color-surface-muted)] transition-all"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingDeliverable(d);
+                    }}
+                    icon={<Pencil className="w-3 h-3" />}
+                  >
+                    Edit
+                  </Button>
+                </td>
               </motion.tr>
             ))}
           </motion.tbody>
         </table>
       </div>
+
+      {/* Edit Deliverable Dialog */}
+      <EditDeliverableDialog
+        deliverable={editingDeliverable}
+        isOpen={Boolean(editingDeliverable)}
+        onClose={() => setEditingDeliverable(null)}
+      />
     </div>
   );
 }
