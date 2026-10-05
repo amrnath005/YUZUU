@@ -80,7 +80,7 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
     show: { opacity: 1, y: 0, transition: { duration: 0.15 } }
   };
 
-  const SortIcon = ({ columnKey }: { columnKey: SortKey }) => {
+  const renderSortIcon = (columnKey: SortKey) => {
     if (sortKey !== columnKey) return null;
     return sortDirection === "asc" ? <ChevronUp className="w-3.5 h-3.5 inline-block ml-1 opacity-70" /> : <ChevronDown className="w-3.5 h-3.5 inline-block ml-1 opacity-70" />;
   };
@@ -138,24 +138,24 @@ export function WorkTable({ deliverables, hideClient = false }: WorkTableProps) 
           <thead className="bg-[var(--color-surface-muted)] text-[var(--color-text-secondary)] border-b border-[var(--color-border)] text-xs uppercase tracking-wider">
             <tr>
               <th className="py-3 px-4 font-semibold cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none w-28" onClick={() => handleSort("date")}>
-                Date <SortIcon columnKey="date" />
+                Date {renderSortIcon("date")}
               </th>
               {!hideClient && (
                 <th className="py-3 px-4 font-semibold cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none" onClick={() => handleSort("client")}>
-                  Client <SortIcon columnKey="client" />
+                  Client {renderSortIcon("client")}
                 </th>
               )}
               <th className="py-3 px-4 font-semibold cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none" onClick={() => handleSort("title")}>
-                Deliverable <SortIcon columnKey="title" />
+                Deliverable {renderSortIcon("title")}
               </th>
               <th className="py-3 px-4 font-semibold cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none w-36" onClick={() => handleSort("type")}>
-                Type <SortIcon columnKey="type" />
+                Type {renderSortIcon("type")}
               </th>
               <th className="py-3 px-4 font-semibold text-right cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none w-32" onClick={() => handleSort("amount")}>
-                Amount <SortIcon columnKey="amount" />
+                Amount {renderSortIcon("amount")}
               </th>
               <th className="py-3 px-4 font-semibold text-center cursor-pointer hover:text-[var(--color-text-primary)] transition-colors select-none w-32" onClick={() => handleSort("status")}>
-                Status <SortIcon columnKey="status" />
+                Status {renderSortIcon("status")}
               </th>
             </tr>
           </thead>

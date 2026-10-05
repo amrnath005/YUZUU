@@ -4,12 +4,14 @@ import { Sidebar } from './sidebar';
 import { MobileNav } from './mobile-nav';
 import { Avatar } from '../ui/avatar';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/auth-context';
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { user } = useAuth();
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
       <Sidebar />
@@ -21,7 +23,7 @@ export function AppShell({ children }: AppShellProps) {
               y<span className="relative inline-block">u<span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-[var(--color-yuzu)] rounded-full" /></span>zu
             </span>
           </Link>
-          <Avatar name="Sahil" size="sm" />
+          <Avatar name={user?.name || "Yuzu"} size="sm" />
         </header>
 
         {/* Main Content Area */}

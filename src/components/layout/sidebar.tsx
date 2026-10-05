@@ -35,8 +35,8 @@ export function Sidebar() {
   const { theme, setTheme } = useTheme();
   const { user, workspace, openAuthModal, signOut, isConfigured } = useAuth();
 
-  const displayName = user?.name || 'Sahil';
-  const displayEmail = user?.email || (workspace ? workspace.name : 'sahil@yuzu.app');
+  const displayName = user?.name || (isConfigured ? 'Guest Freelancer' : 'Demo Workspace');
+  const displayEmail = user?.email || (workspace ? workspace.name : (isConfigured ? 'Not signed in' : 'Local demo'));
 
   return (
     <div className="hidden md:flex flex-col w-60 h-screen border-r border-[var(--color-border)] bg-[var(--color-bg)] sticky top-0">

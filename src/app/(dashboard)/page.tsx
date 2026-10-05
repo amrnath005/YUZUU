@@ -120,7 +120,7 @@ export default function DashboardPage() {
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--color-border)]">
         <div>
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-            {getGreeting()}, {user?.name || 'Sahil'}
+            {getGreeting()}, {user?.name || 'Creator'}
           </h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
             Know your work. Know your money.

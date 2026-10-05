@@ -199,10 +199,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return { error: 'Supabase is not configured' };
 
+    const siteUrl = (typeof window !== 'undefined' ? `${window.location.origin}/` : process.env.NEXT_PUBLIC_SITE_URL) || undefined;
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo: siteUrl,
         data: {
           name: name || email.split('@')[0],
           full_name: name || email.split('@')[0],

@@ -190,6 +190,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   </svg>
                   Google
                 </Button>
+                <p className="text-[10.5px] text-center text-[var(--color-text-secondary)] mt-2">
+                  Use Email &amp; Password for instant access (or enable Google OAuth in Supabase dashboard).
+                </p>
               </div>
             )}
           </DialogBody>

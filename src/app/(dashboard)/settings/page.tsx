@@ -136,13 +136,13 @@ export default function SettingsPage() {
           <div className="p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/30">
             <span className="text-xs uppercase font-medium text-[var(--color-text-secondary)]">Name</span>
             <p className="text-sm font-semibold text-[var(--color-text-primary)] mt-1">
-              {user?.name || "Sahil"}
+              {user?.name || "Not signed in"}
             </p>
           </div>
           <div className="p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/30">
             <span className="text-xs uppercase font-medium text-[var(--color-text-secondary)]">Email</span>
             <p className="text-sm font-semibold text-[var(--color-text-primary)] mt-1">
-              {user?.email || "sahil@yuzu.app"}
+              {user?.email || "Local offline workspace"}
             </p>
           </div>
         </div>
@@ -155,7 +155,7 @@ export default function SettingsPage() {
           <div className="p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/30">
             <span className="text-xs uppercase font-medium text-[var(--color-text-secondary)]">Workspace Name</span>
             <p className="text-sm font-semibold text-[var(--color-text-primary)] mt-1">
-              {workspace?.name || "Sahil Freelance"}
+              {workspace?.name || "Personal Studio"}
             </p>
           </div>
           <div className="p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/30">

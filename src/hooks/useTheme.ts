@@ -5,27 +5,34 @@ import { useEffect, useState } from 'react';
 type Theme = 'light' | 'dark' | 'system';
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>('system');
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('yuzu-theme') as Theme | null;
+      if (savedTheme) return savedTheme;
+    }
+    return 'system';
+  });
+
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('yuzu-theme') as Theme | null;
-    if (savedTheme) {
-      setThemeState(savedTheme);
-    }
+    setMounted(true);
   }, []);
 
-  useEffect(() => {
-    const root = window.document.documentElement;
-    
-    let isDark = false;
+  const resolvedTheme: 'light' | 'dark' = (() => {
+    if (!mounted || typeof window === 'undefined') return 'light';
     if (theme === 'system') {
-      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    } else {
-      isDark = theme === 'dark';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
+    return theme === 'dark' ? 'dark' : 'light';
+  })();
 
-    setResolvedTheme(isDark ? 'dark' : 'light');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const root = window.document.documentElement;
+    const isDark = theme === 'system'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : theme === 'dark';
 
     if (isDark) {
       root.classList.add('dark');
@@ -36,7 +43,9 @@ export function useTheme() {
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('yuzu-theme', newTheme);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('yuzu-theme', newTheme);
+    }
   };
 
   return { theme, setTheme, resolvedTheme };
