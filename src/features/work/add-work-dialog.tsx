@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -13,10 +13,10 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
 import { store } from '@/data/store';
 import { useClients } from '@/hooks/useStore';
-import { DELIVERABLE_TYPE_LABELS, DeliverableType, DeliverableStatus } from '@/types';
+import { DELIVERABLE_TYPE_LABELS, DeliverableType, DeliverableStatus, ClientType } from '@/types';
 
 const addWorkSchema = z.object({
-  clientId: z.string().min(1, 'Select a client'),
+  clientId: z.string().optional(),
   title: z.string().min(1, 'Enter a title'),
   type: z.string().min(1, 'Select a type'),
   amount: z.number().min(0, 'Enter an amount'),
@@ -36,6 +36,12 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
   const clients = useClients();
   const { toast } = useToast();
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const newClientInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [isCreatingClient, setIsCreatingClient] = useState<boolean>(false);
+  const [newClientName, setNewClientName] = useState<string>('');
+  const [newClientType, setNewClientType] = useState<ClientType>('agency');
+  const [clientError, setClientError] = useState<string | null>(null);
 
   const {
     control,
@@ -62,49 +68,93 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
 
   // Auto-populate rate card when client or type changes
   useEffect(() => {
-    if (watchClientId && watchType) {
+    if (watchClientId && watchType && !isCreatingClient) {
       const rateCards = store.getRateCards(watchClientId);
       const matchedRate = rateCards.find(r => r.deliverableType === watchType);
       if (matchedRate) {
         setValue('amount', matchedRate.rate);
       }
     }
-  }, [watchClientId, watchType, setValue]);
+  }, [watchClientId, watchType, isCreatingClient, setValue]);
 
   // When dialog opens, hydrate with last selected client & type if available
   useEffect(() => {
-    if (isOpen && clients.length > 0) {
-      const lastSelection = store.getLastSelection();
-      const defaultClient = (lastSelection.clientId && clients.some(c => c.id === lastSelection.clientId))
-        ? lastSelection.clientId
-        : clients[0].id;
+    if (isOpen) {
+      setClientError(null);
+      if (clients.length === 0) {
+        setIsCreatingClient(true);
+        setNewClientName('');
+        reset({
+          clientId: '',
+          title: '',
+          type: 'instagram-reel',
+          amount: 1500,
+          date: new Date().toISOString().split('T')[0],
+          status: 'delivered',
+          notes: '',
+        });
+        setTimeout(() => {
+          newClientInputRef.current?.focus();
+        }, 80);
+      } else {
+        setIsCreatingClient(false);
+        const lastSelection = store.getLastSelection();
+        const defaultClient = (lastSelection.clientId && clients.some(c => c.id === lastSelection.clientId))
+          ? lastSelection.clientId
+          : clients[0].id;
 
-      const defaultType = (lastSelection.deliverableType as DeliverableType) || 'instagram-reel';
+        const defaultType = (lastSelection.deliverableType as DeliverableType) || 'instagram-reel';
 
-      const rateCards = store.getRateCards(defaultClient);
-      const matchedRate = rateCards.find(r => r.deliverableType === defaultType);
-      const defaultAmount = matchedRate ? matchedRate.rate : 1500;
+        const rateCards = store.getRateCards(defaultClient);
+        const matchedRate = rateCards.find(r => r.deliverableType === defaultType);
+        const defaultAmount = matchedRate ? matchedRate.rate : 1500;
 
-      reset({
-        clientId: defaultClient,
-        title: '',
-        type: defaultType,
-        amount: defaultAmount,
-        date: new Date().toISOString().split('T')[0],
-        status: 'delivered',
-        notes: '',
-      });
+        reset({
+          clientId: defaultClient,
+          title: '',
+          type: defaultType,
+          amount: defaultAmount,
+          date: new Date().toISOString().split('T')[0],
+          status: 'delivered',
+          notes: '',
+        });
 
-      // Auto-focus Title input
-      setTimeout(() => {
-        titleInputRef.current?.focus();
-      }, 80);
+        setTimeout(() => {
+          titleInputRef.current?.focus();
+        }, 80);
+      }
     }
   }, [isOpen, reset, clients]);
 
-  const saveDeliverableInternal = async (data: AddWorkFormValues) => {
+  const resolveClientId = async (): Promise<string | null> => {
+    if (isCreatingClient || clients.length === 0) {
+      const trimmed = newClientName.trim();
+      if (!trimmed) {
+        setClientError('Enter a client name');
+        newClientInputRef.current?.focus();
+        return null;
+      }
+      setClientError(null);
+      const created = await store.addClient({
+        name: trimmed,
+        type: newClientType,
+        isActive: true,
+      });
+      return created.id;
+    } else {
+      const cid = watch('clientId');
+      if (!cid) {
+        setClientError('Select a client');
+        return null;
+      }
+      setClientError(null);
+      return cid;
+    }
+  };
+
+  const saveDeliverableInternal = async (data: AddWorkFormValues, resolvedClientId: string) => {
     await store.addDeliverable({
-      clientId: data.clientId,
+      clientId: resolvedClientId,
       title: data.title.trim(),
       type: data.type as DeliverableType,
       amount: Number(data.amount),
@@ -113,13 +163,16 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
       notes: data.notes?.trim() || undefined,
     });
     // Remember client & type
-    store.setLastSelection(data.clientId, data.type);
+    store.setLastSelection(resolvedClientId, data.type);
   };
 
   // Primary Action: Save & Close (Enter)
   const onSave = async (data: AddWorkFormValues) => {
     try {
-      await saveDeliverableInternal(data);
+      const resolvedId = await resolveClientId();
+      if (!resolvedId) return;
+
+      await saveDeliverableInternal(data, resolvedId);
       toast.success('Deliverable saved');
       onClose();
     } catch (err: any) {
@@ -130,10 +183,16 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
   // Secondary Action: Save & Add Another (Shift + Enter)
   const onSaveAndAddAnother = async (data: AddWorkFormValues) => {
     try {
-      await saveDeliverableInternal(data);
+      const resolvedId = await resolveClientId();
+      if (!resolvedId) return;
+
+      await saveDeliverableInternal(data, resolvedId);
       toast.success('Deliverable saved • Ready for next');
 
-      // Clear title and notes, preserve client, type, rate, date, status
+      // Once created, switch back to selecting this client for subsequent items
+      setIsCreatingClient(false);
+      setNewClientName('');
+      setValue('clientId', resolvedId);
       setValue('title', '');
       setValue('notes', '');
 
@@ -181,18 +240,85 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
         >
           <DialogBody>
             <div className="grid gap-3.5 py-1">
-              <Controller
-                name="clientId"
-                control={control}
-                render={({ field }) => (
-                  <Select
-                    label="Client"
-                    options={[{ label: 'Select client...', value: '' }, ...clientOptions]}
-                    error={errors.clientId?.message}
-                    {...field}
+              {/* Client Selection / Inline Creation */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-[var(--color-text-primary)]">
+                    {isCreatingClient || clients.length === 0 ? 'Client Name' : 'Client'}
+                  </label>
+                  {clients.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingClient(!isCreatingClient);
+                        setClientError(null);
+                      }}
+                      className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] underline transition-colors"
+                    >
+                      {isCreatingClient ? '← Select existing' : '+ New client'}
+                    </button>
+                  )}
+                </div>
+
+                {isCreatingClient || clients.length === 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="sm:col-span-2">
+                      <Input
+                        placeholder="e.g. Nova Media, Pixel House"
+                        value={newClientName}
+                        onChange={(e) => {
+                          setNewClientName(e.target.value);
+                          if (clientError) setClientError(null);
+                        }}
+                        error={clientError || undefined}
+                        ref={newClientInputRef}
+                      />
+                    </div>
+                    <div>
+                      <Select
+                        options={[
+                          { value: 'agency', label: 'Agency' },
+                          { value: 'creator', label: 'Creator' },
+                          { value: 'business', label: 'Business' },
+                          { value: 'startup', label: 'Startup' },
+                          { value: 'individual', label: 'Individual' },
+                        ]}
+                        value={newClientType}
+                        onChange={(e) => setNewClientType(e.target.value as ClientType)}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <Controller
+                    name="clientId"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        name="clientId"
+                        options={[
+                          { label: 'Select client...', value: '' },
+                          ...clientOptions,
+                          { label: '+ Add new client...', value: '__new__' }
+                        ]}
+                        value={field.value}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setIsCreatingClient(true);
+                            setNewClientName('');
+                            setTimeout(() => {
+                              newClientInputRef.current?.focus();
+                            }, 50);
+                          } else {
+                            field.onChange(e);
+                          }
+                        }}
+                        error={clientError || errors.clientId?.message}
+                      />
+                    )}
                   />
                 )}
-              />
+              </div>
+
               <Controller
                 name="title"
                 control={control}
@@ -209,6 +335,7 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
                   />
                 )}
               />
+
               <div className="grid grid-cols-2 gap-3">
                 <Controller
                   name="type"
@@ -268,40 +395,47 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
                 control={control}
                 render={({ field }) => (
                   <div className="space-y-1">
-                    <label className="text-sm font-medium text-[var(--color-text-primary)]">Notes (Optional)</label>
+                    <label className="block text-sm font-medium text-[var(--color-text-primary)]">
+                      Notes (Optional)
+                    </label>
                     <textarea
-                      className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-yuzu)]"
-                      rows={2}
                       placeholder="Brief context or links..."
-                      value={field.value || ''}
-                      onChange={field.onChange}
+                      rows={2}
+                      className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-yuzu)]"
+                      {...field}
                     />
                   </div>
                 )}
               />
             </div>
           </DialogBody>
-          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-2 pt-2 border-t border-[var(--color-border)]">
-            <Button variant="ghost" type="button" onClick={onClose} size="sm">
+          <DialogFooter className="flex items-center justify-between border-t border-[var(--color-border)] pt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
               Cancel
             </Button>
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="flex items-center gap-2">
               <Button
-                variant="secondary"
                 type="button"
-                onClick={handleSubmit(onSaveAndAddAnother)}
-                disabled={isSubmitting}
+                variant="secondary"
                 size="sm"
-                title="Shift + Enter"
+                onClick={handleSubmit(onSaveAndAddAnother)}
+                loading={isSubmitting}
+                title="Save and quickly add another item (Shift+Enter)"
               >
-                Save & Add Another
+                Save &amp; Add Another
               </Button>
               <Button
-                variant="primary"
                 type="submit"
-                disabled={isSubmitting}
+                variant="primary"
                 size="sm"
-                title="Enter"
+                loading={isSubmitting}
+                title="Save deliverable (Enter)"
               >
                 Save
               </Button>
