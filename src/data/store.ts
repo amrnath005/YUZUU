@@ -62,8 +62,10 @@ class YuzuStore {
   }
 
   private notify() {
-    // Save to local cache as immediate resilience layer
-    savePersistedState(this.data);
+    // Only save to offline localStorage if NOT connected to cloud
+    if (!this.isCloudConnected()) {
+      savePersistedState(this.data);
+    }
     this.notifyListeners();
   }
 
@@ -227,7 +229,9 @@ class YuzuStore {
   setLastSelection(clientId: string, deliverableType: string): void {
     this.data.lastSelectedClientId = clientId;
     this.data.lastSelectedDeliverableType = deliverableType;
-    savePersistedState(this.data);
+    if (!this.isCloudConnected()) {
+      savePersistedState(this.data);
+    }
   }
 
   subscribe(listener: () => void): () => void {
