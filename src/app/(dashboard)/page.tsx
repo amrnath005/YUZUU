@@ -151,7 +151,7 @@ export default function DashboardPage() {
           <Button variant="secondary" size="sm" onClick={() => openRecordPayment()} icon={<CreditCard className="w-3.5 h-3.5" />}>
             Record payment
           </Button>
-          <Button variant="primary" size="sm" onClick={openAddWork} icon={<Plus className="w-3.5 h-3.5" />}>
+          <Button variant="primary" size="sm" onClick={() => openAddWork()} icon={<Plus className="w-3.5 h-3.5" />}>
             + Add work
           </Button>
         </div>

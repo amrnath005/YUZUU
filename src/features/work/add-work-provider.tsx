@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { AddWorkDialog } from './add-work-dialog';
 
 interface AddWorkContextType {
-  openAddWork: () => void;
+  openAddWork: (clientId?: string) => void;
   closeAddWork: () => void;
 }
 
@@ -12,9 +12,16 @@ const AddWorkContext = createContext<AddWorkContextType | undefined>(undefined);
 
 export function AddWorkProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [targetClientId, setTargetClientId] = useState<string | undefined>(undefined);
 
-  const openAddWork = useCallback(() => setIsOpen(true), []);
-  const closeAddWork = useCallback(() => setIsOpen(false), []);
+  const openAddWork = useCallback((clientId?: string) => {
+    setTargetClientId(clientId);
+    setIsOpen(true);
+  }, []);
+  const closeAddWork = useCallback(() => {
+    setIsOpen(false);
+    setTargetClientId(undefined);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -34,7 +41,7 @@ export function AddWorkProvider({ children }: { children: React.ReactNode }) {
   return (
     <AddWorkContext.Provider value={{ openAddWork, closeAddWork }}>
       {children}
-      <AddWorkDialog isOpen={isOpen} onClose={closeAddWork} />
+      <AddWorkDialog isOpen={isOpen} onClose={closeAddWork} defaultClientId={targetClientId} />
     </AddWorkContext.Provider>
   );
 }

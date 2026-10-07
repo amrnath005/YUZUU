@@ -34,9 +34,10 @@ interface RecordPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultClientId?: string;
+  defaultDeliverableId?: string;
 }
 
-export function RecordPaymentDialog({ open, onOpenChange, defaultClientId }: RecordPaymentDialogProps) {
+export function RecordPaymentDialog({ open, onOpenChange, defaultClientId, defaultDeliverableId }: RecordPaymentDialogProps) {
   const clients = useClients();
   const { toast } = useToast();
 
@@ -54,7 +55,7 @@ export function RecordPaymentDialog({ open, onOpenChange, defaultClientId }: Rec
       method: "upi",
       amount: 0,
       clientId: defaultClientId || "",
-      deliverableId: "",
+      deliverableId: defaultDeliverableId || "",
       reference: "",
       notes: "",
       markDelivered: true,
@@ -84,20 +85,24 @@ export function RecordPaymentDialog({ open, onOpenChange, defaultClientId }: Rec
     if (open) {
       const activeClientId = defaultClientId || (clients[0]?.id || "");
       const client = clients.find(c => c.id === activeClientId);
-      const initAmount = client && client.outstanding > 0 ? client.outstanding : 0;
+      const delivs = activeClientId ? store.getClientDeliverables(activeClientId) : [];
+      const targetDeliv = defaultDeliverableId ? delivs.find(d => d.id === defaultDeliverableId) : null;
+
+      const initAmount = targetDeliv ? targetDeliv.amount : (client && client.outstanding > 0 ? client.outstanding : 0);
+      const initRef = targetDeliv ? `For: ${targetDeliv.title}` : "";
 
       reset({
         date: new Date().toISOString().split('T')[0],
         method: "upi",
         clientId: activeClientId,
-        deliverableId: "",
+        deliverableId: defaultDeliverableId || "",
         amount: initAmount,
-        reference: "",
+        reference: initRef,
         notes: "",
         markDelivered: true,
       });
     }
-  }, [open, defaultClientId, reset, clients]);
+  }, [open, defaultClientId, defaultDeliverableId, reset, clients]);
 
   // When deliverable is changed, auto-populate amount and reference
   const handleDeliverableChange = (delivId: string) => {

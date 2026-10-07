@@ -99,7 +99,7 @@ export default function WorkPage() {
     <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h1 className="text-2xl md:text-3xl font-semibold text-[var(--color-text-primary)]">Work</h1>
-        <Button onClick={openAddWork} icon={<Plus className="w-4 h-4" />}>
+        <Button onClick={() => openAddWork()} icon={<Plus className="w-4 h-4" />}>
           Add work
         </Button>
       </div>

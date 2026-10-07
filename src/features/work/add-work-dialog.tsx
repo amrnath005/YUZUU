@@ -30,9 +30,10 @@ type AddWorkFormValues = z.infer<typeof addWorkSchema>;
 interface AddWorkDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultClientId?: string;
 }
 
-export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
+export function AddWorkDialog({ isOpen, onClose, defaultClientId }: AddWorkDialogProps) {
   const clients = useClients();
   const { toast } = useToast();
   const titleInputRef = useRef<HTMLInputElement | null>(null);
@@ -99,9 +100,11 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
       } else {
         setIsCreatingClient(false);
         const lastSelection = store.getLastSelection();
-        const defaultClient = (lastSelection.clientId && clients.some(c => c.id === lastSelection.clientId))
-          ? lastSelection.clientId
-          : clients[0].id;
+        const defaultClient = (defaultClientId && clients.some(c => c.id === defaultClientId))
+          ? defaultClientId
+          : (lastSelection.clientId && clients.some(c => c.id === lastSelection.clientId))
+            ? lastSelection.clientId
+            : clients[0].id;
 
         const defaultType = (lastSelection.deliverableType as DeliverableType) || 'instagram-reel';
 
@@ -124,7 +127,7 @@ export function AddWorkDialog({ isOpen, onClose }: AddWorkDialogProps) {
         }, 80);
       }
     }
-  }, [isOpen, reset, clients]);
+  }, [isOpen, reset, clients, defaultClientId]);
 
   const resolveClientId = async (): Promise<string | null> => {
     if (isCreatingClient || clients.length === 0) {

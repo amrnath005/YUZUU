@@ -31,7 +31,7 @@ async function runRegressionSuite() {
     // TEST 1: BATCH ENTRY (SAVE & ADD ANOTHER + STICKY RETENTION)
     // -----------------------------------------------------------------
     console.log('--- TEST 1: BATCH ENTRY ("Save & Add Another" + Sticky Retention) ---');
-    await page.goto(BASE_URL, { waitUntil: 'networkidle0' });
+    await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
 
     // Open Add Work modal
     await page.keyboard.press('KeyN');
@@ -185,11 +185,11 @@ async function runRegressionSuite() {
 
     // Now reload the page (F5 full page reload)
     console.log('  Reloading page (F5)...');
-    await page.reload({ waitUntil: 'networkidle0' });
+    await page.reload({ waitUntil: 'networkidle2' });
     await delay(300);
 
     // Verify data remains after reload
-    await page.goto(`${BASE_URL}/payments`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE_URL}/payments`, { waitUntil: 'networkidle2' });
     const paymentRowFound = await page.evaluate(() => document.body.innerText.includes('PERSIST-TEST-7777') && document.body.innerText.includes('7,777'));
     console.log(`  Post-Reload Verification (/payments): Payment ₹7,777 with ref PERSIST-TEST-7777 visible: ${paymentRowFound ? 'YES (PERSISTED)' : 'NO (FAILED)'}`);
 
@@ -198,7 +198,7 @@ async function runRegressionSuite() {
     // -----------------------------------------------------------------
     console.log('\n--- TEST 3: STATEMENT AUTO-GENERATION ---');
     // Navigate to /statements?client=c_1
-    await page.goto(`${BASE_URL}/statements?client=c_1`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE_URL}/statements?client=c_1`, { waitUntil: 'networkidle2' });
     await delay(300);
 
     console.log(`  Arrived at URL: ${page.url()}`);
@@ -213,7 +213,7 @@ async function runRegressionSuite() {
     // TEST 4: UNIVERSAL WORK SEARCH
     // -----------------------------------------------------------------
     console.log('\n--- TEST 4: UNIVERSAL WORK SEARCH ---');
-    await page.goto(`${BASE_URL}/work`, { waitUntil: 'networkidle0' });
+    await page.goto(`${BASE_URL}/work`, { waitUntil: 'networkidle2' });
 
     async function testSearchQuery(query, description) {
       await page.evaluate((val) => {
@@ -247,7 +247,7 @@ async function runRegressionSuite() {
     // TEST 5: DYNAMIC MONTH SELECTOR
     // -----------------------------------------------------------------
     console.log('\n--- TEST 5: DYNAMIC MONTH SELECTOR ---');
-    await page.goto(BASE_URL, { waitUntil: 'networkidle0' });
+    await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
 
     const monthOptions = await page.evaluate(() => {
       const sel = Array.from(document.querySelectorAll('select')).find(s => s.options && Array.from(s.options).some(o => o.text.includes('2026')));
@@ -266,7 +266,7 @@ async function runRegressionSuite() {
     console.log('\n--- TEST 6: ALL ROUTES HTTP 200 OK SMOKE TEST ---');
     const routes = ['/', '/work', '/clients', '/clients/c_1', '/payments', '/reports', '/statements', '/settings'];
     for (const r of routes) {
-      const resp = await page.goto(BASE_URL + r, { waitUntil: 'networkidle0' });
+      const resp = await page.goto(BASE_URL + r, { waitUntil: 'networkidle2' });
       console.log(`  Route ${r.padEnd(16)} -> Status: ${resp.status()}`);
     }
 

@@ -31,7 +31,7 @@ async function runRealUserWorkflowTest() {
     // -------------------------------------------------------------
     console.log('[Step 1] Loading YUZU Dashboard...');
     const t0 = Date.now();
-    await page.goto(BASE_URL, { waitUntil: 'networkidle0' });
+    await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
     console.log(`✓ Dashboard rendered in ${Date.now() - t0}ms`);
 
     // Helper for SPA navigation via sidebar links (like a real human user)
@@ -369,7 +369,7 @@ async function runRealUserWorkflowTest() {
     const routesToTest = ['/', '/work', '/clients', '/payments', '/reports', '/statements', '/settings'];
 
     for (const r of routesToTest) {
-      await page.goto(BASE_URL + r, { waitUntil: 'networkidle0' });
+      await page.goto(BASE_URL + r, { waitUntil: 'networkidle2' });
       await delay(150);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
       const hasNav = await page.evaluate(() => Boolean(document.querySelector('nav, [role="navigation"]')));
@@ -381,7 +381,7 @@ async function runRealUserWorkflowTest() {
     // -------------------------------------------------------------
     console.log('\n[Step 7] Month-End 30-Second Friction Audit...');
     await page.setViewport({ width: 1280, height: 850 });
-    await page.goto(BASE_URL, { waitUntil: 'networkidle0' });
+    await page.goto(BASE_URL, { waitUntil: 'networkidle2' });
 
     const monthEndAnswers = await page.evaluate(() => {
       const text = document.body.innerText;

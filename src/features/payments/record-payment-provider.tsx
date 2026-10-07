@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState } from "react";
 import { RecordPaymentDialog } from "./record-payment-dialog";
 
 interface RecordPaymentContextType {
-  openRecordPayment: (clientId?: string) => void;
+  openRecordPayment: (clientId?: string, deliverableId?: string) => void;
 }
 
 const RecordPaymentContext = createContext<RecordPaymentContextType | undefined>(undefined);
@@ -12,9 +12,11 @@ const RecordPaymentContext = createContext<RecordPaymentContextType | undefined>
 export function RecordPaymentProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [clientId, setClientId] = useState<string | undefined>();
+  const [deliverableId, setDeliverableId] = useState<string | undefined>();
 
-  const openRecordPayment = (id?: string) => {
-    setClientId(id);
+  const openRecordPayment = (cId?: string, dId?: string) => {
+    setClientId(cId);
+    setDeliverableId(dId);
     setOpen(true);
   };
 
@@ -25,6 +27,7 @@ export function RecordPaymentProvider({ children }: { children: React.ReactNode 
         open={open}
         onOpenChange={setOpen}
         defaultClientId={clientId}
+        defaultDeliverableId={deliverableId}
       />
     </RecordPaymentContext.Provider>
   );

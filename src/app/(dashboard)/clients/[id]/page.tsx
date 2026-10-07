@@ -2,18 +2,45 @@
 
 import React, { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MoreVertical, FileText, CheckCircle, CreditCard, Plus, Pencil } from "lucide-react";
+import { 
+  ArrowLeft, 
+  MoreVertical, 
+  FileText, 
+  CheckCircle, 
+  CreditCard, 
+  Plus, 
+  Pencil, 
+  MessageSquare, 
+  ArrowDownRight, 
+  ArrowUpRight,
+  Sparkles
+} from "lucide-react";
 import { useClient, useDeliverables, usePayments, useRateCards } from "@/hooks/useStore";
-import { formatCurrency, formatFullDate, formatMonth } from "@/lib/utils";
+import { formatCurrency, formatFullDate, formatMonth, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs } from "@/components/ui/tabs";
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from "@/components/ui/dropdown";
 import { WorkTable } from "@/features/work/work-table";
-import { useRecordPayment } from "@/features/payments/record-payment-provider";
+import { EditDeliverableDialog } from "@/features/work/edit-deliverable-dialog";
 import { EditPaymentDialog } from "@/features/payments/edit-payment-dialog";
+import { PaymentReminderDialog } from "@/features/clients/payment-reminder-dialog";
+import { useRecordPayment } from "@/features/payments/record-payment-provider";
 import { useAddWork } from "@/features/work/add-work-provider";
 import { PAYMENT_METHOD_LABELS, DELIVERABLE_TYPE_LABELS, Deliverable, Payment } from "@/types";
+
+interface LedgerEntry {
+  id: string;
+  date: string;
+  entryType: "deliverable" | "payment";
+  title: string;
+  category?: string;
+  notes?: string;
+  charges: number;
+  credits: number;
+  runningBalance: number;
+  raw: Deliverable | Payment;
+}
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -27,8 +54,10 @@ export default function ClientDetailPage() {
   const { openRecordPayment } = useRecordPayment();
   const { openAddWork } = useAddWork();
 
-  const [activeTab, setActiveTab] = useState("work");
+  const [activeTab, setActiveTab] = useState("ledger");
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [editingDeliverable, setEditingDeliverable] = useState<Deliverable | null>(null);
+  const [isReminderOpen, setIsReminderOpen] = useState(false);
 
   const sortedPayments = useMemo(() => {
     return [...payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -47,6 +76,66 @@ export default function ClientDetailPage() {
     return grouped;
   }, [deliverables]);
 
+  // Compute unified chronological ledger with running balance
+  const ledgerEntries = useMemo(() => {
+    const rawItems: {
+      id: string;
+      date: string;
+      entryType: "deliverable" | "payment";
+      title: string;
+      category?: string;
+      notes?: string;
+      charges: number;
+      credits: number;
+      raw: Deliverable | Payment;
+    }[] = [];
+
+    deliverables.forEach(d => {
+      if (d.status !== "cancelled") {
+        rawItems.push({
+          id: d.id,
+          date: d.date,
+          entryType: "deliverable",
+          title: d.title,
+          category: DELIVERABLE_TYPE_LABELS[d.type] || d.type,
+          notes: d.notes,
+          charges: d.amount,
+          credits: 0,
+          raw: d,
+        });
+      }
+    });
+
+    payments.forEach(p => {
+      rawItems.push({
+        id: p.id,
+        date: p.date,
+        entryType: "payment",
+        title: `Payment via ${PAYMENT_METHOD_LABELS[p.method] || p.method}`,
+        category: p.reference ? `Ref: ${p.reference}` : undefined,
+        notes: p.notes,
+        charges: 0,
+        credits: p.amount,
+        raw: p,
+      });
+    });
+
+    // Sort chronologically from oldest to newest to compute running balance
+    rawItems.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    let balance = 0;
+    const computed: LedgerEntry[] = rawItems.map(item => {
+      balance += (item.charges - item.credits);
+      return {
+        ...item,
+        runningBalance: balance,
+      };
+    });
+
+    // Display newest entries on top
+    return computed.reverse();
+  }, [deliverables, payments]);
+
   if (!client) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh]">
@@ -57,6 +146,7 @@ export default function ClientDetailPage() {
   }
 
   const tabs = [
+    { id: "ledger", label: "Ledger", count: ledgerEntries.length },
     { id: "work", label: "Work", count: deliverables.length },
     { id: "payments", label: "Payments", count: payments.length },
     { id: "ratecard", label: "Rate Card", count: rateCards.length },
@@ -65,6 +155,7 @@ export default function ClientDetailPage() {
   const earned = client.totalEarned;
   const received = client.totalReceived;
   const outstanding = client.outstanding;
+  const collectionPercentage = earned > 0 ? Math.min(100, Math.round((received / earned) * 100)) : 100;
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-8">
@@ -82,12 +173,21 @@ export default function ClientDetailPage() {
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl md:text-4xl font-bold text-[var(--color-text-primary)] tracking-tight">{client.name}</h1>
             <Badge variant="yuzu" className="text-sm px-3 py-1">
-              {client.type.charAt(0).toUpperCase() + client.type.slice(1)}
+              {client.type.charAt(0).toUpperCase() + client.type.slice(1)} Client
             </Badge>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          {outstanding > 0 && (
+            <Button 
+              variant="secondary" 
+              onClick={() => setIsReminderOpen(true)}
+              icon={<MessageSquare className="w-4 h-4 text-emerald-600" />}
+            >
+              Send Reminder
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => openAddWork()} icon={<Plus className="w-4 h-4" />}>
             Add Work
           </Button>
@@ -102,6 +202,7 @@ export default function ClientDetailPage() {
             </DropdownTrigger>
             <DropdownContent align="end">
               <DropdownItem onClick={() => router.push(`/statements?client=${clientId}`)}>Generate Statement</DropdownItem>
+              <DropdownItem onClick={() => setIsReminderOpen(true)}>WhatsApp Reminder</DropdownItem>
               <DropdownItem onClick={() => router.push('/clients')}>All Clients</DropdownItem>
             </DropdownContent>
           </Dropdown>
@@ -145,11 +246,133 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
+      {/* Collection Progress Bar */}
+      <div className="bg-[var(--color-surface)] p-4 sm:p-5 rounded-xl border border-[var(--color-border)] shadow-xs space-y-2">
+        <div className="flex justify-between items-center text-xs">
+          <span className="text-[var(--color-text-secondary)] font-medium">
+            Collection Status: <strong className={outstanding === 0 ? "text-emerald-600" : "text-amber-600"}>{outstanding === 0 ? "Settled in Full" : `${formatCurrency(outstanding)} Balance Due`}</strong>
+          </span>
+          <span className="font-semibold text-[var(--color-text-primary)]">
+            {collectionPercentage}% Collected ({formatCurrency(received)} / {formatCurrency(earned)})
+          </span>
+        </div>
+        <div className="w-full h-2 rounded-full bg-[var(--color-surface-muted)] overflow-hidden">
+          <div 
+            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+            style={{ width: `${collectionPercentage}%` }}
+          />
+        </div>
+      </div>
+
       {/* Tabs */}
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
       {/* Tab Content */}
       <div className="mt-6">
+        {/* TAB 1: ALL-IN-ONE RUNNING LEDGER */}
+        {activeTab === "ledger" && (
+          <div className="space-y-4">
+            {ledgerEntries.length === 0 ? (
+              <div className="text-center py-12 text-[var(--color-text-secondary)] bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)]">
+                No activity recorded yet for {client.name}. Add your first work or record a payment above.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[var(--color-surface-muted)] text-[var(--color-text-secondary)] border-b border-[var(--color-border)] text-xs uppercase tracking-wider">
+                    <tr>
+                      <th className="py-3 px-4 font-semibold w-28">Date</th>
+                      <th className="py-3 px-4 font-semibold w-32">Type</th>
+                      <th className="py-3 px-4 font-semibold">Description</th>
+                      <th className="py-3 px-4 font-semibold text-right w-28">Charges (+)</th>
+                      <th className="py-3 px-4 font-semibold text-right w-28">Credits (−)</th>
+                      <th className="py-3 px-4 font-semibold text-right w-32">Balance</th>
+                      <th className="py-3 px-4 font-semibold text-right w-32">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {ledgerEntries.map((entry) => (
+                      <tr 
+                        key={entry.id}
+                        className="group hover:bg-[var(--color-surface-muted)]/50 transition-colors"
+                      >
+                        <td className="py-3.5 px-4 text-xs text-[var(--color-text-secondary)] whitespace-nowrap">
+                          {formatDate(entry.date)}
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          {entry.entryType === "deliverable" ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200/60 dark:border-amber-900/60">
+                              <ArrowUpRight className="w-3 h-3" /> Work Billed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/60 dark:border-emerald-900/60">
+                              <ArrowDownRight className="w-3 h-3" /> Payment Received
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <p className="font-semibold text-sm text-[var(--color-text-primary)]">
+                            {entry.title}
+                          </p>
+                          {entry.category && (
+                            <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">
+                              {entry.category}
+                            </p>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-medium text-[var(--color-text-primary)] tabular-nums">
+                          {entry.charges > 0 ? formatCurrency(entry.charges) : "—"}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-semibold text-emerald-600 tabular-nums">
+                          {entry.credits > 0 ? `− ${formatCurrency(entry.credits)}` : "—"}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-bold text-sm tabular-nums text-[var(--color-text-primary)]">
+                          {formatCurrency(Math.max(0, entry.runningBalance))}
+                        </td>
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {entry.entryType === "deliverable" ? (
+                              <>
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  className="h-7 px-2.5 text-xs font-medium"
+                                  onClick={() => openRecordPayment(clientId, entry.id)}
+                                  icon={<CreditCard className="w-3 h-3" />}
+                                >
+                                  Pay
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                                  onClick={() => setEditingDeliverable(entry.raw as Deliverable)}
+                                  icon={<Pencil className="w-3 h-3" />}
+                                />
+                              </>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                                onClick={() => setEditingPayment(entry.raw as Payment)}
+                                icon={<Pencil className="w-3 h-3" />}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: WORK DELIVERABLES */}
         {activeTab === "work" && (
           <div className="space-y-8">
             {Object.keys(groupedDeliverables).length === 0 ? (
@@ -169,6 +392,7 @@ export default function ClientDetailPage() {
           </div>
         )}
 
+        {/* TAB 3: PAYMENTS HISTORY */}
         {activeTab === "payments" && (
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] shadow-sm overflow-hidden">
             {sortedPayments.length === 0 ? (
@@ -227,6 +451,7 @@ export default function ClientDetailPage() {
           </div>
         )}
 
+        {/* TAB 4: RATE CARD */}
         {activeTab === "ratecard" && (
           <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] shadow-sm overflow-hidden p-4 md:p-6">
             <div className="flex justify-between items-center mb-6">
@@ -253,11 +478,27 @@ export default function ClientDetailPage() {
         )}
       </div>
 
+      {/* Edit Deliverable Dialog */}
+      <EditDeliverableDialog
+        deliverable={editingDeliverable}
+        isOpen={Boolean(editingDeliverable)}
+        onClose={() => setEditingDeliverable(null)}
+      />
+
       {/* Edit Payment Dialog */}
       <EditPaymentDialog
         payment={editingPayment}
         isOpen={Boolean(editingPayment)}
         onClose={() => setEditingPayment(null)}
+      />
+
+      {/* WhatsApp / Email Payment Reminder Dialog */}
+      <PaymentReminderDialog
+        client={client}
+        outstanding={outstanding}
+        deliverables={deliverables}
+        isOpen={isReminderOpen}
+        onClose={() => setIsReminderOpen(false)}
       />
     </div>
   );
