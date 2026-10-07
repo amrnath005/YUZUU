@@ -592,6 +592,52 @@ class YuzuStore {
     this.notify();
   }
 
+  async updatePayment(id: string, data: Partial<Payment>): Promise<void> {
+    if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
+      const updatePayload: Database['public']['Tables']['payments']['Update'] = {};
+      if (data.clientId !== undefined) updatePayload.client_id = data.clientId;
+      if (data.amount !== undefined) updatePayload.amount = Number(data.amount);
+      if (data.method !== undefined) updatePayload.method = data.method;
+      if (data.date !== undefined) updatePayload.date = data.date;
+      if (data.reference !== undefined) updatePayload.reference = data.reference || null;
+      if (data.notes !== undefined) updatePayload.notes = data.notes || null;
+
+      const { error } = await this.cloudClient
+        .from('payments')
+        .update(updatePayload)
+        .eq('id', id)
+        .eq('workspace_id', this.activeWorkspaceId);
+
+      if (error) {
+        console.error('[YUZU Supabase] Error updating payment:', error);
+        throw new Error(error.message || 'Failed to update payment in cloud');
+      }
+    }
+
+    this.data.payments = this.data.payments.map(p => 
+      p.id === id ? { ...p, ...data } : p
+    );
+    this.notify();
+  }
+
+  async deletePayment(id: string): Promise<void> {
+    if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
+      const { error } = await this.cloudClient
+        .from('payments')
+        .delete()
+        .eq('id', id)
+        .eq('workspace_id', this.activeWorkspaceId);
+
+      if (error) {
+        console.error('[YUZU Supabase] Error deleting payment:', error);
+        throw new Error(error.message || 'Failed to delete payment in cloud');
+      }
+    }
+
+    this.data.payments = this.data.payments.filter(p => p.id !== id);
+    this.notify();
+  }
+
   search(query: string) {
     const q = query.toLowerCase();
     return {

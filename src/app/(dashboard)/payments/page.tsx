@@ -9,8 +9,9 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRecordPayment } from "@/features/payments/record-payment-provider";
-import { PAYMENT_METHOD_LABELS, PaymentMethod } from "@/types";
-import { Search, Plus, CreditCard, ChevronLeft, ChevronRight } from "lucide-react";
+import { EditPaymentDialog } from "@/features/payments/edit-payment-dialog";
+import { PAYMENT_METHOD_LABELS, Payment, PaymentMethod } from "@/types";
+import { Search, Plus, CreditCard, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function PaymentsPage() {
@@ -18,6 +19,7 @@ export default function PaymentsPage() {
   const [clientId, setClientId] = useState("all");
   const [method, setMethod] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const itemsPerPage = 15;
 
   const { openRecordPayment } = useRecordPayment();
@@ -140,7 +142,8 @@ export default function PaymentsPage() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-2"
+                  onClick={() => setEditingPayment(payment)}
+                  className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-2 cursor-pointer hover:border-[var(--color-yuzu)] transition-colors"
                 >
                   <div className="flex justify-between items-start">
                     <div>
@@ -157,9 +160,21 @@ export default function PaymentsPage() {
                   </div>
                   <div className="flex justify-between items-center text-xs text-[var(--color-text-secondary)] pt-2 border-t border-[var(--color-border)]">
                     <span>{formatFullDate(payment.date)}</span>
-                    <Badge variant="default" className="text-xs">
-                      {PAYMENT_METHOD_LABELS[payment.method] || payment.method}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default" className="text-xs">
+                        {PAYMENT_METHOD_LABELS[payment.method] || payment.method}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPayment(payment);
+                        }}
+                        icon={<Pencil className="w-3 h-3" />}
+                      />
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -177,11 +192,16 @@ export default function PaymentsPage() {
                   <th className="p-4 font-medium">Method</th>
                   <th className="p-4 font-medium">Reference</th>
                   <th className="p-4 font-medium">Notes</th>
+                  <th className="p-4 font-medium text-right w-20">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
                 {paginatedPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-[var(--color-surface-muted)]/40 transition-colors">
+                  <tr 
+                    key={payment.id} 
+                    onClick={() => setEditingPayment(payment)}
+                    className="group hover:bg-[var(--color-surface-muted)]/50 transition-colors cursor-pointer"
+                  >
                     <td className="p-4 whitespace-nowrap text-xs text-[var(--color-text-secondary)]">{formatDate(payment.date)}</td>
                     <td className="p-4 font-medium text-[var(--color-text-primary)]">{clientMap[payment.clientId] || "Unknown"}</td>
                     <td className="p-4 whitespace-nowrap font-bold text-right text-[var(--color-text-primary)]">{formatCurrency(payment.amount)}</td>
@@ -190,6 +210,20 @@ export default function PaymentsPage() {
                     </td>
                     <td className="p-4 font-mono text-xs text-[var(--color-text-secondary)]">{payment.reference || "-"}</td>
                     <td className="p-4 text-xs text-[var(--color-text-secondary)] truncate max-w-[200px]">{payment.notes || "-"}</td>
+                    <td className="p-4 text-right whitespace-nowrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] opacity-70 group-hover:opacity-100 hover:bg-[var(--color-surface-muted)] transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingPayment(payment);
+                        }}
+                        icon={<Pencil className="w-3 h-3" />}
+                      >
+                        Edit
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -226,6 +260,13 @@ export default function PaymentsPage() {
           )}
         </div>
       )}
+
+      {/* Edit Payment Dialog */}
+      <EditPaymentDialog
+        payment={editingPayment}
+        isOpen={Boolean(editingPayment)}
+        onClose={() => setEditingPayment(null)}
+      />
     </div>
   );
 }

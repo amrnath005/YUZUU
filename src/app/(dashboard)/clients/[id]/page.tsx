@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, MoreVertical, FileText, CheckCircle, CreditCard, Plus } from "lucide-react";
+import { ArrowLeft, MoreVertical, FileText, CheckCircle, CreditCard, Plus, Pencil } from "lucide-react";
 import { useClient, useDeliverables, usePayments, useRateCards } from "@/hooks/useStore";
 import { formatCurrency, formatFullDate, formatMonth } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,9 @@ import { Tabs } from "@/components/ui/tabs";
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from "@/components/ui/dropdown";
 import { WorkTable } from "@/features/work/work-table";
 import { useRecordPayment } from "@/features/payments/record-payment-provider";
+import { EditPaymentDialog } from "@/features/payments/edit-payment-dialog";
 import { useAddWork } from "@/features/work/add-work-provider";
-import { PAYMENT_METHOD_LABELS, DELIVERABLE_TYPE_LABELS, Deliverable } from "@/types";
+import { PAYMENT_METHOD_LABELS, DELIVERABLE_TYPE_LABELS, Deliverable, Payment } from "@/types";
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -27,6 +28,7 @@ export default function ClientDetailPage() {
   const { openAddWork } = useAddWork();
 
   const [activeTab, setActiveTab] = useState("work");
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
 
   const sortedPayments = useMemo(() => {
     return [...payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -183,11 +185,16 @@ export default function ClientDetailPage() {
                       <th className="p-4 font-medium whitespace-nowrap">Method</th>
                       <th className="p-4 font-medium whitespace-nowrap">Reference</th>
                       <th className="p-4 font-medium whitespace-nowrap">Notes</th>
+                      <th className="p-4 font-medium text-right whitespace-nowrap w-20">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]">
                     {sortedPayments.map((payment) => (
-                      <tr key={payment.id} className="hover:bg-[var(--color-surface-muted)]/50 transition-colors">
+                      <tr 
+                        key={payment.id} 
+                        onClick={() => setEditingPayment(payment)}
+                        className="group hover:bg-[var(--color-surface-muted)]/50 transition-colors cursor-pointer"
+                      >
                         <td className="p-4 text-[var(--color-text-secondary)] whitespace-nowrap">{formatFullDate(payment.date)}</td>
                         <td className="p-4 font-semibold text-right text-[var(--color-text-primary)] tabular-nums whitespace-nowrap">{formatCurrency(payment.amount)}</td>
                         <td className="p-4 whitespace-nowrap">
@@ -197,6 +204,20 @@ export default function ClientDetailPage() {
                         </td>
                         <td className="p-4 text-[var(--color-text-secondary)] font-mono text-xs whitespace-nowrap">{payment.reference || "—"}</td>
                         <td className="p-4 text-[var(--color-text-secondary)] max-w-xs truncate">{payment.notes || "—"}</td>
+                        <td className="p-4 text-right whitespace-nowrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] opacity-70 group-hover:opacity-100 hover:bg-[var(--color-surface-muted)] transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingPayment(payment);
+                            }}
+                            icon={<Pencil className="w-3 h-3" />}
+                          >
+                            Edit
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -231,6 +252,13 @@ export default function ClientDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Payment Dialog */}
+      <EditPaymentDialog
+        payment={editingPayment}
+        isOpen={Boolean(editingPayment)}
+        onClose={() => setEditingPayment(null)}
+      />
     </div>
   );
 }
