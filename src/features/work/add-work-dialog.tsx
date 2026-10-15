@@ -78,9 +78,11 @@ export function AddWorkDialog({ isOpen, onClose, defaultClientId }: AddWorkDialo
     }
   }, [watchClientId, watchType, isCreatingClient, setValue]);
 
+  const prevOpenRef = useRef(false);
+
   // When dialog opens, hydrate with last selected client & type if available
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevOpenRef.current) {
       setClientError(null);
       if (clients.length === 0) {
         setIsCreatingClient(true);
@@ -127,7 +129,8 @@ export function AddWorkDialog({ isOpen, onClose, defaultClientId }: AddWorkDialo
         }, 80);
       }
     }
-  }, [isOpen, reset, clients, defaultClientId]);
+    prevOpenRef.current = isOpen;
+  }, [isOpen, reset, defaultClientId]);
 
   const resolveClientId = async (): Promise<string | null> => {
     if (isCreatingClient || clients.length === 0) {

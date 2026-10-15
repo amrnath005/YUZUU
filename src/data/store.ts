@@ -34,6 +34,8 @@ class YuzuStore {
   private cloudClient: SupabaseClient<Database> | null = null;
   private activeWorkspaceId: string = 'ws_1';
   private isSyncingCloud: boolean = false;
+  private version: number = 0;
+  private realtimeChannel: any = null;
 
   constructor(initialData: StoreData) {
     let effectiveData = { ...initialData };
@@ -45,6 +47,10 @@ class YuzuStore {
     }
     this.data = effectiveData;
     this.listeners = new Set();
+  }
+
+  public getVersion(): number {
+    return this.version;
   }
 
   public hydrate(): void {
@@ -62,6 +68,7 @@ class YuzuStore {
   }
 
   private notify() {
+    this.version++;
     // Only save to offline localStorage if NOT connected to cloud
     if (!this.isCloudConnected()) {
       savePersistedState(this.data);
@@ -86,12 +93,58 @@ class YuzuStore {
     this.cloudClient = supabase;
     this.activeWorkspaceId = workspaceId;
     await this.syncFromCloud();
+    this.setupRealtimeSubscription();
+  }
+
+  /**
+   * Subscribes to live Supabase postgres_changes for this workspace
+   */
+  private setupRealtimeSubscription(): void {
+    if (!this.cloudClient || this.activeWorkspaceId === 'ws_1') return;
+
+    if (this.realtimeChannel) {
+      try {
+        this.cloudClient.removeChannel(this.realtimeChannel);
+      } catch (_) {}
+      this.realtimeChannel = null;
+    }
+
+    const wsId = this.activeWorkspaceId;
+    this.realtimeChannel = this.cloudClient
+      .channel(`yuzu_workspace_${wsId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payments', filter: `workspace_id=eq.${wsId}` },
+        () => { this.syncFromCloud(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deliverables', filter: `workspace_id=eq.${wsId}` },
+        () => { this.syncFromCloud(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'clients', filter: `workspace_id=eq.${wsId}` },
+        () => { this.syncFromCloud(); }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rate_cards', filter: `workspace_id=eq.${wsId}` },
+        () => { this.syncFromCloud(); }
+      )
+      .subscribe();
   }
 
   /**
    * Disconnect cloud and revert back to local persistence
    */
   public disconnectCloud(): void {
+    if (this.realtimeChannel && this.cloudClient) {
+      try {
+        this.cloudClient.removeChannel(this.realtimeChannel);
+      } catch (_) {}
+      this.realtimeChannel = null;
+    }
     this.cloudClient = null;
     this.activeWorkspaceId = 'ws_1';
     if (typeof window !== 'undefined') {
@@ -108,7 +161,7 @@ class YuzuStore {
         };
       }
     }
-    this.notifyListeners();
+    this.notify();
   }
 
   public isCloudConnected(): boolean {
@@ -576,19 +629,75 @@ class YuzuStore {
 
   async deleteDeliverable(id: string): Promise<void> {
     if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
-      const { error } = await this.cloudClient
+      const { data, error } = await this.cloudClient
         .from('deliverables')
         .delete()
         .eq('id', id)
-        .eq('workspace_id', this.activeWorkspaceId);
+        .eq('workspace_id', this.activeWorkspaceId)
+        .select();
 
       if (error) {
         console.error('[YUZU Supabase] Error deleting deliverable:', error);
         throw new Error(error.message || 'Failed to delete deliverable in cloud');
       }
+      if (!data || data.length === 0) {
+        throw new Error('Failed to delete deliverable: record not found or permission denied in cloud');
+      }
     }
 
     this.data.deliverables = this.data.deliverables.filter(d => d.id !== id);
+    this.notify();
+  }
+
+  async updateClient(id: string, data: Partial<Client>): Promise<void> {
+    if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
+      const updatePayload: Database['public']['Tables']['clients']['Update'] = {};
+      if (data.name !== undefined) updatePayload.name = data.name;
+      if (data.type !== undefined) updatePayload.type = data.type;
+      if (data.email !== undefined) updatePayload.email = data.email || null;
+      if (data.phone !== undefined) updatePayload.phone = data.phone || null;
+      if (data.notes !== undefined) updatePayload.notes = data.notes || null;
+      if (data.isActive !== undefined) updatePayload.is_active = data.isActive;
+
+      const { error } = await this.cloudClient
+        .from('clients')
+        .update(updatePayload)
+        .eq('id', id)
+        .eq('workspace_id', this.activeWorkspaceId);
+
+      if (error) {
+        console.error('[YUZU Supabase] Error updating client:', error);
+        throw new Error(error.message || 'Failed to update client in cloud');
+      }
+    }
+
+    this.data.clients = this.data.clients.map(c => 
+      c.id === id ? { ...c, ...data } : c
+    );
+    this.notify();
+  }
+
+  async deleteClient(id: string): Promise<void> {
+    if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
+      const { data, error } = await this.cloudClient
+        .from('clients')
+        .delete()
+        .eq('id', id)
+        .eq('workspace_id', this.activeWorkspaceId)
+        .select();
+
+      if (error) {
+        console.error('[YUZU Supabase] Error deleting client:', error);
+        throw new Error(error.message || 'Failed to delete client in cloud');
+      }
+      if (!data || data.length === 0) {
+        throw new Error('Failed to delete client: record not found or permission denied in cloud');
+      }
+    }
+
+    this.data.clients = this.data.clients.filter(c => c.id !== id);
+    this.data.deliverables = this.data.deliverables.filter(d => d.clientId !== id);
+    this.data.payments = this.data.payments.filter(p => p.clientId !== id);
     this.notify();
   }
 
@@ -622,15 +731,19 @@ class YuzuStore {
 
   async deletePayment(id: string): Promise<void> {
     if (this.cloudClient && this.activeWorkspaceId !== 'ws_1') {
-      const { error } = await this.cloudClient
+      const { data, error } = await this.cloudClient
         .from('payments')
         .delete()
         .eq('id', id)
-        .eq('workspace_id', this.activeWorkspaceId);
+        .eq('workspace_id', this.activeWorkspaceId)
+        .select();
 
       if (error) {
         console.error('[YUZU Supabase] Error deleting payment:', error);
         throw new Error(error.message || 'Failed to delete payment in cloud');
+      }
+      if (!data || data.length === 0) {
+        throw new Error('Failed to delete payment: record not found or permission denied in cloud');
       }
     }
 

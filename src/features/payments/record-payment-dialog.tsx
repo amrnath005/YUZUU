@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -81,8 +81,10 @@ export function RecordPaymentDialog({ open, onOpenChange, defaultClientId, defau
     return clientDeliverables.find(d => d.id === watchDeliverableId) || null;
   }, [clientDeliverables, watchDeliverableId]);
 
+  const prevOpenRef = useRef(false);
+
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpenRef.current) {
       const activeClientId = defaultClientId || (clients[0]?.id || "");
       const client = clients.find(c => c.id === activeClientId);
       const delivs = activeClientId ? store.getClientDeliverables(activeClientId) : [];
@@ -102,7 +104,8 @@ export function RecordPaymentDialog({ open, onOpenChange, defaultClientId, defau
         markDelivered: true,
       });
     }
-  }, [open, defaultClientId, defaultDeliverableId, reset, clients]);
+    prevOpenRef.current = open;
+  }, [open, defaultClientId, defaultDeliverableId, reset]);
 
   // When deliverable is changed, auto-populate amount and reference
   const handleDeliverableChange = (delivId: string) => {

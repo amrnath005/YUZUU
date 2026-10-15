@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useSyncExternalStore, useCallback } from 'react';
 import { store } from '../data/store';
 import { 
   ClientWithStats, Deliverable, Payment, DashboardStats, 
@@ -8,18 +8,14 @@ import {
 } from '../types';
 import { DeliverableFilters, PaymentFilters } from '../data/store';
 
-// Generic hook that rerenders when store changes
+// Generic hook that rerenders synchronously when store changes
 export function useStore<T>(selector: () => T): T {
-  const [state, setState] = useState(selector());
-
-  useEffect(() => {
-    const unsubscribe = store.subscribe(() => {
-      setState(selector());
-    });
-    return unsubscribe;
-  }, [selector]);
-
-  return state;
+  useSyncExternalStore(
+    (onStoreChange) => store.subscribe(onStoreChange),
+    () => store.getVersion(),
+    () => store.getVersion()
+  );
+  return selector();
 }
 
 export function useClients(): ClientWithStats[] {
