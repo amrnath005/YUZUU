@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useClients } from "@/hooks/useStore";
+import { useClients, useDeliverables, usePayments } from "@/hooks/useStore";
 import { useAuth } from "@/contexts/auth-context";
-import { store } from "@/data/store";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { formatCurrency, formatMonth, formatDate, formatFullDate } from "@/lib/utils";
-import { DELIVERABLE_TYPE_LABELS, PAYMENT_METHOD_LABELS, Deliverable, Payment } from "@/types";
+import { DELIVERABLE_TYPE_LABELS, PAYMENT_METHOD_LABELS, Deliverable, Payment, ClientWithStats } from "@/types";
 import { Card } from "@/components/ui/card";
 import { 
   Printer, 
@@ -23,15 +22,22 @@ import {
   QrCode,
   Settings2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Calendar,
+  Layers,
+  Clock
 } from "lucide-react";
 
 interface StatementData {
-  client: any;
-  monthDate: Date;
+  client: ClientWithStats;
+  isAllTime: boolean;
+  periodLabel: string;
   startDate: Date;
   endDate: Date;
   statementNumber: string;
+  previousBalance: number;
+  priorDeliverablesCount: number;
+  priorPaymentsCount: number;
   deliverables: Deliverable[];
   payments: Payment[];
   earned: number;
@@ -48,12 +54,11 @@ function StatementsContent() {
   const { toast } = useToast();
 
   const [selectedClient, setSelectedClient] = useState(initialClient);
+  const [periodMode, setPeriodMode] = useState<"all" | "month">("all");
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  
-  const [statementData, setStatementData] = useState<StatementData | null>(null);
 
   // Customizable Remittance / Invoice metadata
   const [showCustomDetails, setShowCustomDetails] = useState(false);
@@ -70,78 +75,133 @@ function StatementsContent() {
     }
   }, [user, upiId]);
 
+  // Synchronize client selection if empty but clients available
+  useEffect(() => {
+    if (initialClient && clients.some(c => c.id === initialClient)) {
+      setSelectedClient(initialClient);
+    } else if (!selectedClient && clients.length > 0) {
+      setSelectedClient(clients[0].id);
+    }
+  }, [initialClient, clients, selectedClient]);
+
+  // Reactive store data hooks - auto-updates when store or realtime changes!
+  const deliverables = useDeliverables(selectedClient ? { clientId: selectedClient } : undefined);
+  const payments = usePayments(selectedClient ? { clientId: selectedClient } : undefined);
+
+  const activeClient = useMemo(() => {
+    return clients.find(c => c.id === selectedClient);
+  }, [clients, selectedClient]);
+
   const studioName = workspace?.name || (user?.name ? `${user.name}'s Studio` : "Creative Studio");
   const freelancerName = user?.name || "Freelance Creator";
   const contactEmail = user?.email || "billing@yuzu.app";
 
-  const createStatement = (clientId: string, monthVal: string) => {
-    if (!clientId) return;
-    const client = store.getClient(clientId);
-    if (!client) return;
-    
-    const [yearStr, monthStr] = monthVal.split("-");
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10) - 1; // 0-indexed
-    
-    const start = new Date(year, month, 1);
-    const end = new Date(year, month + 1, 0, 23, 59, 59);
-    
-    const deliverables = store.getClientDeliverables(clientId).filter(
-      d => new Date(d.date) >= start && new Date(d.date) <= end && d.status !== 'cancelled'
-    );
-    const payments = store.getClientPayments(clientId).filter(
-      p => new Date(p.date) >= start && new Date(p.date) <= end
-    );
+  // Compute Statement Data with rigorous ledger accounting
+  const statementData = useMemo<StatementData | null>(() => {
+    if (!activeClient) return null;
 
-    const earned = deliverables.reduce((sum, d) => sum + d.amount, 0);
-    const received = payments.reduce((sum, p) => sum + p.amount, 0);
-    const outstanding = Math.max(0, earned - received);
+    const isAllTime = periodMode === "all";
+    let startDate: Date;
+    let endDate: Date;
+    let periodLabel: string;
+    let periodDeliverables: Deliverable[];
+    let periodPayments: Payment[];
+    let previousBalance = 0;
+    let priorDeliverablesCount = 0;
+    let priorPaymentsCount = 0;
 
-    // Deterministic statement numbering: STMT-YYYYMM-XXXX
-    const clientCode = client.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'CLNT';
-    const statementNumber = `STMT-${yearStr}${monthStr}-${clientCode}`;
+    // Filter and sort chronologically
+    const clientDeliverables = deliverables
+      .filter(d => d.clientId === activeClient.id && d.status !== 'cancelled')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    setStatementData({
-      client,
-      monthDate: start,
-      startDate: start,
-      endDate: end,
+    const clientPayments = payments
+      .filter(p => p.clientId === activeClient.id)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    if (isAllTime) {
+      periodDeliverables = clientDeliverables;
+      periodPayments = clientPayments;
+      previousBalance = 0;
+
+      const timestamps = [
+        ...clientDeliverables.map(d => new Date(d.date).getTime()),
+        ...clientPayments.map(p => new Date(p.date).getTime()),
+        new Date(activeClient.createdAt || Date.now()).getTime()
+      ];
+      const earliestTs = Math.min(...timestamps);
+      startDate = new Date(earliestTs);
+      endDate = new Date();
+      periodLabel = "All Time (Complete Ledger)";
+    } else {
+      const [yearStr, monthStr] = selectedMonth.split("-");
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10) - 1; // 0-indexed
+
+      startDate = new Date(year, month, 1, 0, 0, 0);
+      endDate = new Date(year, month + 1, 0, 23, 59, 59);
+      periodLabel = formatMonth(startDate);
+
+      // Prior transactions (before startDate)
+      const priorDeliverables = clientDeliverables.filter(d => new Date(d.date) < startDate);
+      const priorPayments = clientPayments.filter(p => new Date(p.date) < startDate);
+
+      const priorEarned = priorDeliverables.reduce((sum, d) => sum + d.amount, 0);
+      const priorReceived = priorPayments.reduce((sum, p) => sum + p.amount, 0);
+
+      // Positive = unpaid debt brought forward; Negative = advance credit brought forward
+      previousBalance = priorEarned - priorReceived;
+      priorDeliverablesCount = priorDeliverables.length;
+      priorPaymentsCount = priorPayments.length;
+
+      // Period transactions
+      periodDeliverables = clientDeliverables.filter(
+        d => new Date(d.date) >= startDate && new Date(d.date) <= endDate
+      );
+      periodPayments = clientPayments.filter(
+        p => new Date(p.date) >= startDate && new Date(p.date) <= endDate
+      );
+    }
+
+    const earned = periodDeliverables.reduce((sum, d) => sum + d.amount, 0);
+    const received = periodPayments.reduce((sum, p) => sum + p.amount, 0);
+
+    // Textbook Zoho Invoice Ledger Balance Due calculation:
+    // Balance Due = Previous Balance + Invoiced This Period - Payments This Period
+    const netBalance = isAllTime ? (earned - received) : (previousBalance + earned - received);
+    const outstanding = Math.max(0, netBalance);
+
+    // Deterministic statement numbering: STMT-YYYYMM-XXXX or STMT-ALL-XXXX
+    const clientCode = activeClient.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'CLNT';
+    const dateCode = isAllTime ? 'LIFETIME' : selectedMonth.replace('-', '');
+    const statementNumber = `STMT-${dateCode}-${clientCode}`;
+
+    return {
+      client: activeClient,
+      isAllTime,
+      periodLabel,
+      startDate,
+      endDate,
       statementNumber,
-      deliverables,
-      payments,
+      previousBalance,
+      priorDeliverablesCount,
+      priorPaymentsCount,
+      deliverables: periodDeliverables,
+      payments: periodPayments,
       earned,
       received,
       outstanding,
-    });
-  };
-
-  useEffect(() => {
-    if (initialClient && clients.length > 0) {
-      setSelectedClient(initialClient);
-      createStatement(initialClient, selectedMonth);
-    } else if (clients.length > 0 && !selectedClient) {
-      // Auto-select first client if none selected
-      setSelectedClient(clients[0].id);
-      createStatement(clients[0].id, selectedMonth);
-    }
-  }, [initialClient, clients, selectedMonth]);
-
-  const generateStatement = () => {
-    if (!selectedClient) {
-      toast.warning("Please select a client");
-      return;
-    }
-    createStatement(selectedClient, selectedMonth);
-  };
+    };
+  }, [activeClient, periodMode, selectedMonth, deliverables, payments]);
 
   const handleDownloadPDF = () => {
     if (!statementData) return;
     const originalTitle = document.title;
     const sanitizedClient = statementData.client.name.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const [year, month] = selectedMonth.split("-");
+    const modeTag = statementData.isAllTime ? "AllTime" : selectedMonth;
     
     // Set professional filename for browser's "Save as PDF"
-    document.title = `${sanitizedClient}_Statement_${month}_${year}_YUZU`;
+    document.title = `${sanitizedClient}_Statement_${modeTag}_YUZU`;
     
     toast.info(
       "Generating PDF Document",
@@ -164,6 +224,19 @@ function StatementsContent() {
       toast("Link copied");
     }
   };
+
+  // Recent month shortcuts for rapid selection
+  const monthOptions = useMemo(() => {
+    const list = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      list.push({ value: val, label: i === 0 ? `${label} (Current)` : label });
+    }
+    return list;
+  }, []);
 
   return (
     <div className="space-y-6 p-4 md:p-8 max-w-5xl mx-auto pb-24">
@@ -192,6 +265,7 @@ function StatementsContent() {
 
         {/* Client & Period Selector Card */}
         <Card className="p-5 flex flex-wrap gap-4 items-end bg-[var(--color-surface)] shadow-xs">
+          {/* Client Select */}
           <div className="flex-1 min-w-[220px]">
             <Select
               label="Select Client"
@@ -199,24 +273,55 @@ function StatementsContent() {
               onChange={(e) => setSelectedClient(e.target.value)}
               options={[
                 { label: "Choose client...", value: "" },
-                ...clients.map(c => ({ label: `${c.name} (${c.type})`, value: c.id }))
+                ...clients.map(c => ({ 
+                  label: `${c.name} (${c.type}) • ${formatCurrency(c.outstanding)} due`, 
+                  value: c.id 
+                }))
               ]}
             />
           </div>
-          <div className="w-48">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-[var(--color-text-primary)]">Statement Month</label>
-              <input 
-                type="month" 
-                value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-yuzu)]"
-              />
+
+          {/* Statement Scope: All-Time vs Monthly */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-[var(--color-text-primary)]">Statement Scope</label>
+            <div className="flex items-center bg-[var(--color-surface-muted)] p-1 rounded-lg border border-[var(--color-border)]">
+              <button
+                type="button"
+                onClick={() => setPeriodMode("all")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  periodMode === "all"
+                    ? "bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-xs font-semibold"
+                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                }`}
+              >
+                All-Time Ledger
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodMode("month")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  periodMode === "month"
+                    ? "bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-xs font-semibold"
+                    : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+                }`}
+              >
+                Monthly Period
+              </button>
             </div>
           </div>
-          <Button variant="primary" onClick={generateStatement} icon={<FileCheck className="w-4 h-4" />}>
-            Generate Statement
-          </Button>
+
+          {/* Month Selector (if monthly) */}
+          {periodMode === "month" && (
+            <div className="w-48">
+              <Select
+                label="Statement Month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                options={monthOptions}
+              />
+            </div>
+          )}
+
           <Button 
             variant="ghost" 
             onClick={() => setShowCustomDetails(!showCustomDetails)}
@@ -320,7 +425,7 @@ function StatementsContent() {
                 Date: <span className="font-semibold text-zinc-800">{formatFullDate(new Date().toISOString())}</span>
               </p>
               <p className="text-xs text-zinc-500">
-                Period: <span className="font-semibold text-zinc-800">{formatMonth(statementData.monthDate)}</span>
+                Period: <span className="font-semibold text-zinc-800">{statementData.periodLabel}</span>
               </p>
             </div>
           </div>
@@ -345,7 +450,9 @@ function StatementsContent() {
                 Billing Cycle
               </span>
               <p className="text-sm font-semibold text-zinc-900 mt-1">
-                {formatDate(statementData.startDate.toISOString())} – {formatDate(statementData.endDate.toISOString())}
+                {statementData.isAllTime 
+                  ? `Inception to ${formatDate(new Date().toISOString())}`
+                  : `${formatDate(statementData.startDate.toISOString())} – ${formatDate(statementData.endDate.toISOString())}`}
               </p>
               <p className="text-xs text-zinc-500 mt-0.5">
                 Currency: <span className="font-semibold text-zinc-800">INR (₹)</span>
@@ -353,11 +460,36 @@ function StatementsContent() {
             </div>
           </div>
 
-          {/* Executive 3-Card Summary Ribbon (Zoho Invoice Style) */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          {/* Executive Summary Ribbon (Zoho Invoice Style) */}
+          <div className={`grid gap-4 mb-8 ${statementData.previousBalance !== 0 && !statementData.isAllTime ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+            {/* Opening Balance / Advance Credit (if monthly mode with prior transactions) */}
+            {statementData.previousBalance !== 0 && !statementData.isAllTime && (
+              <div className={`p-4 rounded-xl border ${
+                statementData.previousBalance < 0 
+                  ? 'border-emerald-200 bg-emerald-50/50' 
+                  : 'border-amber-200 bg-amber-50/50'
+              }`}>
+                <p className={`text-[10.5px] uppercase font-bold tracking-wider ${
+                  statementData.previousBalance < 0 ? 'text-emerald-700' : 'text-amber-700'
+                }`}>
+                  Balance Forward
+                </p>
+                <p className={`text-xl sm:text-2xl font-black mt-1 tabular-nums ${
+                  statementData.previousBalance < 0 ? 'text-emerald-700' : 'text-amber-700'
+                }`}>
+                  {statementData.previousBalance < 0 
+                    ? `-${formatCurrency(Math.abs(statementData.previousBalance))}` 
+                    : formatCurrency(statementData.previousBalance)}
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  {statementData.previousBalance < 0 ? 'Advance Credit' : 'Overdue b/f'}
+                </p>
+              </div>
+            )}
+
             <div className="p-4 rounded-xl border border-zinc-200 bg-white">
               <p className="text-[10.5px] uppercase font-bold text-zinc-400 tracking-wider">
-                Total Billed
+                {statementData.isAllTime ? 'Total Billed' : 'Billed This Period'}
               </p>
               <p className="text-xl sm:text-2xl font-black text-zinc-900 mt-1 tabular-nums">
                 {formatCurrency(statementData.earned)}
@@ -369,7 +501,7 @@ function StatementsContent() {
 
             <div className="p-4 rounded-xl border border-zinc-200 bg-white">
               <p className="text-[10.5px] uppercase font-bold text-zinc-400 tracking-wider">
-                Payments Credited
+                {statementData.isAllTime ? 'Payments Credited' : 'Payments This Period'}
               </p>
               <p className="text-xl sm:text-2xl font-black text-emerald-600 mt-1 tabular-nums">
                 {formatCurrency(statementData.received)}
@@ -381,7 +513,7 @@ function StatementsContent() {
 
             <div className={`p-4 rounded-xl border ${statementData.outstanding > 0 ? 'border-amber-300 bg-amber-50/40' : 'border-zinc-200 bg-zinc-50/50'}`}>
               <p className="text-[10.5px] uppercase font-bold text-amber-700 tracking-wider">
-                Balance Due
+                Total Balance Due
               </p>
               <p className={`text-xl sm:text-2xl font-black mt-1 tabular-nums ${statementData.outstanding > 0 ? 'text-amber-700' : 'text-zinc-900'}`}>
                 {formatCurrency(statementData.outstanding)}
@@ -417,6 +549,37 @@ function StatementsContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-200/60 font-sans">
+                  {/* Ledger Balance Forward Row (Zoho Invoice Style) */}
+                  {!statementData.isAllTime && statementData.previousBalance !== 0 && (
+                    <tr className="bg-zinc-50/70 font-medium">
+                      <td className="py-3 px-3 text-center text-zinc-400 font-mono">—</td>
+                      <td className="py-3 px-3 text-zinc-500 whitespace-nowrap font-mono">{formatDate(statementData.startDate.toISOString())}</td>
+                      <td className="py-3 px-3 text-zinc-800" colSpan={3}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-zinc-900">Balance Brought Forward</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                            statementData.previousBalance < 0 
+                              ? 'bg-emerald-100 text-emerald-800' 
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {statementData.previousBalance < 0 ? 'Advance Credit' : 'Unpaid Prior'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 font-normal mt-0.5">
+                          Net balance from {statementData.priorDeliverablesCount} previous deliverables and {statementData.priorPaymentsCount} prior payments.
+                        </p>
+                      </td>
+                      <td className="py-3 px-3 text-right text-zinc-400 font-mono">—</td>
+                      <td className={`py-3 px-3 text-right font-bold tabular-nums ${
+                        statementData.previousBalance < 0 ? 'text-emerald-700' : 'text-amber-700'
+                      }`}>
+                        {statementData.previousBalance < 0 
+                          ? `-${formatCurrency(Math.abs(statementData.previousBalance))}` 
+                          : formatCurrency(statementData.previousBalance)}
+                      </td>
+                    </tr>
+                  )}
+
                   {statementData.deliverables.length > 0 ? (
                     statementData.deliverables.map((d, index) => (
                       <tr key={d.id} className="hover:bg-zinc-50/50 transition-colors">
@@ -522,12 +685,24 @@ function StatementsContent() {
 
             {/* Calculations Breakdown */}
             <div className="w-full sm:w-5/12 space-y-2 text-xs">
+              {!statementData.isAllTime && statementData.previousBalance !== 0 && (
+                <div className="flex justify-between py-1 text-zinc-600">
+                  <span>Balance Brought Forward</span>
+                  <span className={`font-semibold tabular-nums ${
+                    statementData.previousBalance < 0 ? 'text-emerald-700' : 'text-zinc-900'
+                  }`}>
+                    {statementData.previousBalance < 0 
+                      ? `(-) ${formatCurrency(Math.abs(statementData.previousBalance))} (Advance Credit)` 
+                      : `(+) ${formatCurrency(statementData.previousBalance)}`}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between py-1 text-zinc-600">
-                <span>Gross Work Total</span>
+                <span>{statementData.isAllTime ? 'Gross Work Total' : 'Billed in This Period'}</span>
                 <span className="font-medium text-zinc-900 tabular-nums">{formatCurrency(statementData.earned)}</span>
               </div>
               <div className="flex justify-between py-1 text-emerald-700">
-                <span>Less Total Payments Made</span>
+                <span>{statementData.isAllTime ? 'Less Total Payments Made' : 'Less Payments Credited This Period'}</span>
                 <span className="font-medium tabular-nums">(-) {formatCurrency(statementData.received)}</span>
               </div>
               <div className="pt-2 border-t-2 border-zinc-900 flex justify-between items-baseline">
@@ -564,7 +739,7 @@ function StatementsContent() {
       ) : (
         <div className="py-16 text-center text-[var(--color-text-secondary)] border border-dashed border-[var(--color-border)] rounded-2xl bg-[var(--color-surface)]/50">
           <p className="text-base font-medium text-[var(--color-text-primary)]">Ready to generate statement</p>
-          <p className="text-sm mt-1">Select a client and month above to create an official statement.</p>
+          <p className="text-sm mt-1">Select a client above to preview their official statement.</p>
         </div>
       )}
     </div>
