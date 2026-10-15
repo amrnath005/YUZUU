@@ -114,8 +114,14 @@ html, body {
     overflow: visible !important;
   }
 
-  .print\:hidden {
+  .print\:hidden,
+  [data-toast-container],
+  [role="status"],
+  [aria-live="polite"],
+  .toast-container {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
   }
 
   * {

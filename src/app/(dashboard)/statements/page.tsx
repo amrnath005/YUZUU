@@ -202,18 +202,13 @@ function StatementsContent() {
     
     // Set professional filename for browser's "Save as PDF"
     document.title = `${sanitizedClient}_Statement_${modeTag}_YUZU`;
-    
-    toast.info(
-      "Generating PDF Document",
-      "Select 'Save as PDF' in the print dialog to export high-resolution vector PDF."
-    );
+
+    // Trigger vector print / PDF export cleanly without any overlay toasts
+    window.print();
 
     setTimeout(() => {
-      window.print();
-      setTimeout(() => {
-        document.title = originalTitle;
-      }, 1000);
-    }, 150);
+      document.title = originalTitle;
+    }, 1000);
   };
 
   const handleShare = () => {
